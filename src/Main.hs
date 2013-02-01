@@ -10,6 +10,7 @@ import Control.Monad
 import Database.HDBC
 import Database.HDBC.MySQL
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as C
 import Control.Monad.Trans
 import Data.Maybe
 --TODO: There are at least a few cases where it'd be faster if I converted
@@ -18,6 +19,7 @@ import Data.Text hiding (map, concat, head, last, zip)
 import Text.JSON
 
 import Config
+import Data.Ratio
 
 main :: IO ()
 main = quickHttpServe site
@@ -46,14 +48,21 @@ getQuery query params =
         conn <- connectMySQL connectInfo
         quickQuery' conn query params
 
---TODO : change (toJSString . fromSql) to map properly to/from other types ... JSON ints and SQL ints, JSStrings and SqlStrings, etc
 jsonAssemble listName fields rows =
   encode $ toJSObject
     [
       (listName,
-          map toJSObject [ zip fields element | element <- [ map (toJSString . fromSql) row | row <- rows ] ]
+          map toJSObject [ zip fields element | element <- [ map toJSONType row | row <- rows ] ]
       )
     ]
+
+toJSONType :: SqlValue -> JSValue
+toJSONType (SqlInteger x) = JSRational False $ fromIntegral x
+toJSONType (SqlInt32 x) = JSRational False $ fromIntegral x
+toJSONType (SqlInt64 x) = JSRational False $ fromIntegral x
+toJSONType (SqlString x) = JSString $ toJSString x
+toJSONType (SqlByteString x) = JSString $ toJSString $ C.unpack x
+toJSONType (SqlPOSIXTime x) = JSRational False $ (fromRational . toRational ) x
 
 listApps :: Snap ()
 listApps = do
