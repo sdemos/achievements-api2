@@ -52,10 +52,13 @@ jsonAssemble listName fields rows =
   encode $ toJSObject
     [
       (listName,
-          map toJSObject [ zip fields element | element <- [ map toJSONType row | row <- rows ] ]
+          map (toJSObject . (zip fields) . (map toJSONType)) rows
       )
     ]
 
+
+-- As a point of order I'm like 100% sure all of the Integers I push across the wire can work
+-- in Javascript's hilariously terrible 2^53 floating point max, since it only has floating point numbers.
 toJSONType :: SqlValue -> JSValue
 toJSONType (SqlInteger x) = JSRational False $ fromIntegral x
 toJSONType (SqlInt32 x) = JSRational False $ fromIntegral x
