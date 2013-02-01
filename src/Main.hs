@@ -12,7 +12,7 @@ import Database.HDBC.MySQL
 import qualified Data.ByteString as B
 import Control.Monad.Trans
 import Data.Maybe
-import Data.Text hiding (map, concat, head, last)
+import Data.Text hiding (map, concat, head, last, zip)
 import Text.JSON
 
 import Config
@@ -42,7 +42,7 @@ getQuery query params =
     withRTSSignalsBlocked $ do
         conn <- connectMySQL connectInfo
         quickQuery' conn query params
-        
+
 listApps :: Snap ()
 listApps = do
   result <- liftIO getApps
@@ -55,9 +55,7 @@ getApps = do
   return $ encode $ toJSObject
     [
       ("apps",
-        [ toJSObject 
-          [("name", head app), ("description", last app)] | app <- [ map (toJSString . fromSql) row | row <- rows ]
-        ]
+          map toJSObject [zip ["name", "description"]  element | element <- [ map (toJSString . fromSql) row | row <- rows ]]
       )
     ]
 
@@ -85,9 +83,7 @@ getEvents appName = do
   return $ encode $ toJSObject
     [
       ("events",
-        [ toJSObject
-          [("app name", element !! 0), ("event title", element !! 1), ("start time", element !! 2), ("end time", element !! 3)] | element <- [ map (toJSString . fromSql) row | row <- rows ]
-        ]
+          map toJSObject [zip ["app name", "event title", "start time", "end time"]  element | element <- [ map (toJSString . fromSql) row | row <- rows ]]
       )
     ]
 
@@ -99,13 +95,11 @@ listAppAchievements = do
     writeText $ pack result
 
 getAppAchievements appName = do
-  rows <- getQuery "SELECT achievements.id,title,achievements.description,score FROM achievements INNER JOIN apps on achievements.app_id = apps.id where apps.name like (?)" [toSql appName]
+  rows <- getQuery "SELECT achievements.id, title, achievements.description, score FROM achievements INNER JOIN apps on achievements.app_id = apps.id where apps.name like (?)" [toSql appName]
   return $ encode $ toJSObject
     [
       ("achievements",
-        [ toJSObject
-          [("id", element !! 0), ("title", element !! 1), ("description", element !! 2), ("score", element !! 3)] | element <- [ map (toJSString . fromSql) row | row <- rows ]
-        ]
+        map toJSObject [zip ["id", "title", "description", "score"]  element | element <- [ map (toJSString . fromSql) row | row <- rows ]]
       )
     ]
 
@@ -122,9 +116,7 @@ getUserAchievements appName userName = do
   return $ encode $ toJSObject
     [
       ("achievements",
-        [ toJSObject
-          [("app name", element !! 0), ("title", element !! 1), ("description", element !! 2), ("max progress", element !! 3), ("user progress", element !! 4), ("score", element !! 5), ("updated at", element !! 6)] | element <- [ map (toJSString . fromSql) row | row <- rows ]
-        ]
+        map toJSObject [zip ["app name", "title", "description", "max progress", "user progress", "score", "updated at"]  element | element <- [ map (toJSString . fromSql) row | row <- rows ]]
       )
     ]
 
