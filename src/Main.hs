@@ -43,6 +43,14 @@ getQuery query params =
         conn <- connectMySQL connectInfo
         quickQuery' conn query params
 
+jsonAssemble listName fields rows =
+  encode $ toJSObject
+    [
+      (listName,
+          map toJSObject [zip fields element | element <- [ map (toJSString . fromSql) row | row <- rows ]]
+      )
+    ]
+
 listApps :: Snap ()
 listApps = do
   result <- liftIO getApps
@@ -52,12 +60,7 @@ getApps = do
   rows <- getQuery "SELECT name, description FROM apps" []
   --return $ encode $ map (map (toJSString . fromSql)) rows
   --return $ encode $ toJSObject [("apps", [ (map (toJSString . fromSql) row) | row <- rows])]
-  return $ encode $ toJSObject
-    [
-      ("apps",
-          map toJSObject [zip ["name", "description"]  element | element <- [ map (toJSString . fromSql) row | row <- rows ]]
-      )
-    ]
+  return $ jsonAssemble "apps" ["name", "description"] rows
 
 listAppUsers :: Snap ()
 listAppUsers = do
@@ -80,13 +83,7 @@ listAllAppEvents = do
 
 getEvents appName = do
   rows <- getQuery "SELECT apps.name, events.title, events.start_time, events.end_time FROM apps INNER JOIN events on apps.id = events.game_id WHERE apps.name like (?)" [toSql appName]
-  return $ encode $ toJSObject
-    [
-      ("events",
-          map toJSObject [zip ["app name", "event title", "start time", "end time"]  element | element <- [ map (toJSString . fromSql) row | row <- rows ]]
-      )
-    ]
-
+  return $ jsonAssemble "events" ["app name", "event title", "start time", "end time"] rows
 
 listAppAchievements :: Snap ()
 listAppAchievements = do
@@ -96,13 +93,7 @@ listAppAchievements = do
 
 getAppAchievements appName = do
   rows <- getQuery "SELECT achievements.id, title, achievements.description, score FROM achievements INNER JOIN apps on achievements.app_id = apps.id where apps.name like (?)" [toSql appName]
-  return $ encode $ toJSObject
-    [
-      ("achievements",
-        map toJSObject [zip ["id", "title", "description", "score"]  element | element <- [ map (toJSString . fromSql) row | row <- rows ]]
-      )
-    ]
-
+  return $ jsonAssemble "achievements" ["id", "title", "description", "score"] rows
 
 listUserAchievements :: Snap ()
 listUserAchievements = do
@@ -113,12 +104,7 @@ listUserAchievements = do
 
 getUserAchievements appName userName = do
   rows <- getQuery "SELECT apps.name, t2.title, t2.description, t2.progress_max, t1.progress, t2.score, t1.updated_at FROM (achievement_progress AS t1 INNER JOIN achievements AS t2 ON t1.achievement_id=t2.id INNER JOIN apps on apps.id = t2.app_id) JOIN users AS t3 ON t1.user_id=t3.id  WHERE t1.progress!=0 AND t3.username=(?) AND apps.name like (?)" [toSql userName, toSql appName]
-  return $ encode $ toJSObject
-    [
-      ("achievements",
-        map toJSObject [zip ["app name", "title", "description", "max progress", "user progress", "score", "updated at"]  element | element <- [ map (toJSString . fromSql) row | row <- rows ]]
-      )
-    ]
+  return $ jsonAssemble "achievements" ["app name", "title", "description", "max progress", "user progress", "score", "updated at"] rows
 
 -- Must provide a correct game key for this app; not even close to done yet and I'm not sure how I will be implementing this
 updateUserAchievements :: Snap ()
