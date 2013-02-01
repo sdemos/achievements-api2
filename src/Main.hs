@@ -43,11 +43,12 @@ getQuery query params =
         conn <- connectMySQL connectInfo
         quickQuery' conn query params
 
+--TODO : change (toJSString . fromSql) to map properly to/from other types ... JSON ints and SQL ints, JSStrings and SqlStrings, etc
 jsonAssemble listName fields rows =
   encode $ toJSObject
     [
       (listName,
-          map toJSObject [zip fields element | element <- [ map (toJSString . fromSql) row | row <- rows ]]
+          map toJSObject [ zip fields element | element <- [ map (toJSString . fromSql) row | row <- rows ] ]
       )
     ]
 
@@ -58,8 +59,6 @@ listApps = do
 
 getApps = do
   rows <- getQuery "SELECT name, description FROM apps" []
-  --return $ encode $ map (map (toJSString . fromSql)) rows
-  --return $ encode $ toJSObject [("apps", [ (map (toJSString . fromSql) row) | row <- rows])]
   return $ jsonAssemble "apps" ["name", "description"] rows
 
 listAppUsers :: Snap ()
@@ -70,7 +69,7 @@ listAppUsers = do
 
 getUsers appName = do
   rows <- getQuery "SELECT (t1.app_username) FROM users_in_apps AS t1 INNER JOIN apps AS t2 ON t1.app_id=t2.id WHERE t2.name=(?)" [toSql appName]
-  return $ encode $ toJSObject [("users", [(toJSString . fromSql) row | row <- concat rows ])]
+  return $ jsonAssemble "users" ["username"] rows
 
 listAppEvents = do
   appName <- safeGetParam "appName"
