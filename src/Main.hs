@@ -25,10 +25,10 @@ site =
     ifTop (writeBS "hello world") <|>
     route [ ("apps/", listApps),
                ("apps/:appName/users", listAppUsers),
-          	   ("apps/:appName", listAppAchievements),
+               ("apps/:appName", listAppAchievements),
                ("apps/:appName/events", listAppEvents),
-          	   ("apps/:appName/users/:userName", listUserAchievements),
-          	   ("apps/:appName/users/:userName/update", updateUserAchievements),
+               ("apps/:appName/users/:userName", listUserAchievements),
+               ("apps/:appName/users/:userName/update", updateUserAchievements),
                ("events/", listAllAppEvents),
                ("events/:appName", listAppEvents)
           ] <|>
