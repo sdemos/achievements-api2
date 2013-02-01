@@ -12,6 +12,8 @@ import Database.HDBC.MySQL
 import qualified Data.ByteString as B
 import Control.Monad.Trans
 import Data.Maybe
+--TODO: There are at least a few cases where it'd be faster if I converted
+-- to Text earlier in the chain, and manually called the prelude ones when necessary
 import Data.Text hiding (map, concat, head, last, zip)
 import Text.JSON
 
@@ -22,7 +24,7 @@ main = quickHttpServe site
 
 site :: Snap ()
 site =
-    ifTop (writeBS "hello world") <|>
+    ifTop (writeBS "CSH Achievements API") <|>
     route [ ("apps/", listApps),
                ("apps/:appName/users", listAppUsers),
                ("apps/:appName", listAppAchievements),
@@ -30,7 +32,8 @@ site =
                ("apps/:appName/users/:userName", listUserAchievements),
                ("apps/:appName/users/:userName/update", updateUserAchievements),
                ("events/", listAllAppEvents),
-               ("events/:appName", listAppEvents)
+               ("events/:appName", listAppEvents),
+               ("users/:userName", listAllUserAchievements)
           ] <|>
     dir "documentation" (serveDirectory "dist/doc")
 
@@ -99,6 +102,12 @@ listUserAchievements = do
     appName <- safeGetParam "appName"
     userName <- safeGetParam "userName"
     result <- liftIO $ getUserAchievements appName userName
+    writeText $ pack result
+
+listAllUserAchievements :: Snap ()
+listAllUserAchievements = do
+    userName <- safeGetParam "userName"
+    result <- liftIO $ getUserAchievements (pack "%") userName
     writeText $ pack result
 
 getUserAchievements appName userName = do
