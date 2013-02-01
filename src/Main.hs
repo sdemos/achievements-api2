@@ -52,7 +52,7 @@ jsonAssemble listName fields rows =
   encode $ toJSObject
     [
       (listName,
-          map (toJSObject . (zip fields) . (map toJSONType)) rows
+          map (toJSObject . zip fields . map toJSONType) rows
       )
     ]
 
