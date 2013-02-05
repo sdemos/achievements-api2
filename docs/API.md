@@ -1,8 +1,7 @@
-
 # General Rules / Slight Oddities #
 
 * Time is expressed in seconds since the UNIX epoch. Use a library to convert to whatever datetime system you need.
-* There is a confusingly but necessarily, a concept of CSH users AND a concept of in-game users; many people who don't have a CSH account play NetHack, for instance (past members, friends, coworkers, family, freshmen without accounts yet) and there is also a much smaller group of people who have a CSH account but have their in-game username as something different. If you get back a username from requests inside the app/ tree of API requests, you would do well to assume these usernames are only valid for that game.
+* There is a confusingly but necessarily, a concept of CSH users AND a concept of in-game users; many people who don't have a CSH account play NetHack, for instance (past members, friends, coworkers, family, freshmen without accounts yet) and there is also a much smaller group of people who have a CSH account but have their in-game username as something different. If you get back a username from requests inside the `app/` tree of API requests, you would do well to assume these usernames are only valid for that game.
 * ID numbers are all unique within whatever concept you're in (i.e. all achievement IDs are unique, even across applications, but they would still step on the ID numbers of, say, users, which is a completely unrelated concept), and can be used as such if you require unique concept-global IDs inside your application.
 
 # Unauthenticated Read Operations #
