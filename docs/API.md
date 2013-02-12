@@ -69,3 +69,24 @@ Get a global list of `events`.
 ## GET /users/:userName ##
 
 Get a list of all a user's achievments, in all applications.
+
+
+# Write Operations #
+
+These operations require an `appKey` to be passed in. This key is only valid for a single application; i.e. NetHack administrators/apps could not issue achievements for Netrek.
+
+## POST /app/:appName/achievement ##
+
+You must provide either an achievement title or ID number, and a username.
+
+Simplest case bare-minimum example:
+````
+POST /app/:netHack/achievement
+{ "appKey":"ccefe01e6e15c6dd076be4be3536fc84", "achievement":{"id":23, "username":"clockfort"} }
+````
+
+More complicated example (reference by title, possible multi-part achievement progress tracking, backdating achievements)
+````
+POST /app/:netHack/achievement
+{ "appKey":"ccefe01e6e15c6dd076be4be3536fc84", "achievement":{"title":"Developers, Developers, Developers, Developers", "username":"clockfort", "user progress":1,"updated at":1315633538} }
+````
