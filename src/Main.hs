@@ -9,8 +9,8 @@ import Snap.Http.Server
 import Control.Monad
 import Database.HDBC
 import Database.HDBC.MySQL
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Char8 as C
+import qualified Data.ByteString as B hiding (map)
+import qualified Data.ByteString.Char8 as C hiding (map)
 import Control.Monad.Trans
 import Data.Maybe
 --TODO: There are at least a few cases where it'd be faster if I converted
@@ -24,39 +24,6 @@ import Data.Ratio
 main :: IO ()
 main = quickHttpServe site
 
-{-
-site :: Snap ()
-site =
-    ifTop (writeBS "CSH Achievements API") <|>
-    route [ ("apps/", listApps),
-               ("apps/:appName/users", listAppUsers),
-               ("apps/:appName", listAppAchievements),
-               ("apps/:appName/events", listAppEvents),
-               ("apps/:appName/users/:userName", listUserAchievements),
-               ("apps/:appName/users/:userName/update", updateUserAchievements),
-               ("events/", listAllAppEvents),
-               ("events/:appName", listAppEvents),
-               ("users/:userName", listAllUserAchievements)
-          ] <|>
-    dir "documentation" (serveDirectory "dist/doc")
--}
-
-{-
-site :: Snap ()
-site =
-    ifTop (writeBS "CSH Achievements API") <|>
-    method GET $ route $ [ ("apps/", listApps),
-                         ("apps/:appName/users", listAppUsers),
-                         ("apps/:appName", listAppAchievements),
-                         ("apps/:appName/events", listAppEvents),
-                         ("apps/:appName/users/:userName", listUserAchievements),
-                         ("events/", listAllAppEvents),
-                         ("events/:appName", listAppEvents),
-                         ("users/:userName", listAllUserAchievements)
-                       ] <|>
-    dir "documentation" (serveDirectory "dist/doc")
--}
-
 site :: Snap ()
 site =
     ifTop (writeBS "CSH Achievements API") <|>
@@ -64,16 +31,16 @@ site =
     method POST post <|>
     dir "documentation" (serveDirectory "dist/dox")
     where
-        get = route [ ("apps/", listApps),
-                      ("apps/:appName/users", listAppUsers),
-                      ("apps/:appName", listAppAchievements),
-                      ("apps/:appName/events", listAppEvents),
-                      ("apps/:appName/:userName", listUserAchievements),
-                      ("apps/:appName/users/:userName", listUserAchievements),
-                      ("events/", listAllAppEvents),
-                      ("events/:appName", listAppEvents),
-                      ("users/:userName", listAllUserAchievements)
-                    ]
+        get  = route [ ("apps/", listApps),
+                       ("apps/:appName/users", listAppUsers),
+                       ("apps/:appName", listAppAchievements),
+                       ("apps/:appName/events", listAppEvents),
+                       ("apps/:appName/:userName", listUserAchievements),
+                       ("apps/:appName/users/:userName", listUserAchievements),
+                       ("events/", listAllAppEvents),
+                       ("events/:appName", listAppEvents),
+                       ("users/:userName", listAllUserAchievements)
+                     ]
         post = route [ ("users/:userName", createUser),
                        ("apps/:appName/achievements", updateAchievement)
                      ]
@@ -82,6 +49,7 @@ site =
 safeGetParam :: MonadSnap f => B.ByteString -> f B.ByteString
 safeGetParam paramName = fromMaybe "" <$> getParam paramName
 
+--getQuery :: String -> [SqlValue] -> IO [[SqlValue]]
 getQuery query params =
     withRTSSignalsBlocked $ do
         conn <- connectMySQL connectInfo
@@ -94,7 +62,6 @@ jsonAssemble listName fields rows =
           map (toJSObject . zip fields . map toJSONType) rows
       )
     ]
-
 
 -- As a point of order I'm like 100% sure all of the Integers I push across the wire can work
 -- in Javascript's hilariously terrible 2^53 'integer' max, since it actually only has floating point numbers.
@@ -152,10 +119,24 @@ getAchievement appName achievementid = do
   rows <- getQuery "SELECT achievements.id, title, achievements.description, score FROM achievements INNER JOIN apps on achievements.app_id = apps.id WHERE achievements.id = (?) AND apps.name like (?)" [toSql achievementid, toSql appName]
   return $ jsonAssemble "achievements" ["id", "title", "description", "score"] rows
 
-getUserAchievementProgress :: [Char] -> [Char] -> Int -> IO [Integer]
+-- Do I really need this function?
+-- Yes, because it will return it to the user
+-- getUserAchievementProgress :: [Char] -> [Char] -> Int -> [Integer]
+-- getUserAchievementProgress appName userName achievementid = do
+  -- progressQuery <- (getQuery "SELECT t1.progress, t2.progress_max FROM (achievement_progress AS t1 INNER JOIN achievements AS t2 ON t1.achievement_id=t2.id INNER JOIN apps on apps.id = t2.app_id) JOIN users AS t3 ON t1.user_id=t3.id WHERE t3.username=(?) AND apps.name like (?) AND t2.id=(?)" [toSql userName, toSql appName, toSql achievementid])
+  -- return $ jsonAssemble "achievementProgress" ["progress", "maxProgress"] $ map fromSql $ progressQuery !! 0
+
 getUserAchievementProgress appName userName achievementid = do
-  progressQuery <- (getQuery "SELECT t1.progress, t2.progress_max FROM (achievement_progress AS t1 INNER JOIN achievements AS t2 ON t1.achievement_id=t2.id INNER JOIN apps on apps.id = t2.app_id) JOIN users AS t3 ON t1.user_id=t3.id WHERE t3.username=(?) AND apps.name like (?)" [toSql userName, toSql appName])
-  return $ map fromSql $ progressQuery !! 0
+  progressQuery <- getQuery "SELECT t1.progress, t2.progress_max FROM (achievement_progress AS t1 INNER JOIN achievements AS t2 ON t1.achievement_id=t2.id INNER JOIN apps on apps.id = t2.app_id) JOIN users AS t3 ON t1.user_id=t3.id WHERE t3.username=(?) AND apps.name like (?) AND t2.id=(?)" [toSql userName, toSql appName, toSql achievementid]
+  return $ jsonAssemble "achievementProgress" ["progress", "maxProgress"] progressQuery
+  
+listUserAchievementProgress :: Snap ()
+listUserAchievementProgress = do
+  appName <- safeGetParam "appName"
+  userName <- safeGetParam "userName"
+  achievementid <- safeGetParam "achievementid"
+  result <- liftIO $ getUserAchievementProgress appName userName achievementid
+  writeText $ pack result
 
 listUserAchievements :: Snap ()
 listUserAchievements = do
@@ -183,25 +164,27 @@ updateUserAchievements = do
   maybe (writeBS "An authenticated gameKey is required to update player information")
     writeBS gameKey
 
--- This is also going to auth the user, although that is going to be a facade - for now, the api will just accept anything
+-- This is also going to auth the user, although for now this is just a facade - the api will just accept anything
 createUser :: Snap()
 createUser = do
   appName <- safeGetParam "appName"
   userName <- safeGetParam "userName"
-  writeBS "Not finished yet..."
+  writeBS "Totally worked, dude!" -- it's funny, because it's bs
 
 updateAchievement :: Snap ()
 updateAchievement = do
+  -- writeBS "USGHDSKLJ"
   appName <- safeGetParam "appName"
   userName <- safeGetParam "username"
   achievementid <- safeGetParam "id"
   achievementProgress <- safeGetParam "progress"
-  currProg <- getUserAchievementProgress appName userName achievementid
-  writeText $ show $ updateProg appName userName achievementid achievementProgress currProg
+  writeBS "What now?"
+  -- chievoprog <- getUserAchievementProgress appName userName achievementid
+  -- writeText $ show $ updateProg appName userName achievementid achievementProgress chievoprog
 
-updateProg appName userName achievementid achievementProgress currProg
-    | currProg !! 0 >= currProg !! 1 = "You've already earned this achievement!"
-    | currProg !! 0 + achievementProgress >= currProg !! 1 = "You've earned this achievement, in real time!"
-    | currProg !! 0 < currProg !! 1 = "Old Progress - " ++ (currProg !! 0) ++ "\nNew Progress - " ++ (currProg !! 0) ++ achievementProgress
+-- updateProg appName userName achievementid achievementProgress currProg
+    -- | currProg !! 0 >= currProg !! 1 = "You've already earned this achievement!"
+    -- | currProg !! 0 + achievementProgress >= currProg !! 1 = "You've earned this achievement, in real time!"
+    -- | currProg !! 0 < currProg !! 1 = "Old Progress - " ++ (currProg !! 0) ++ "\nNew Progress - " ++ (currProg !! 0) ++ achievementProgress
 
 --EOF--

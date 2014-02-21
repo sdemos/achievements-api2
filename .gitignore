@@ -3,3 +3,5 @@ dist/
 log/
 src/private*
 todostuff
+src/Config.hs
+.*.sw*
