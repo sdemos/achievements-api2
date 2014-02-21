@@ -6,6 +6,6 @@ connectInfo =
   defaultMySQLConnectInfo {
     mysqlHost = "mysql.csh.rit.edu",
     mysqlDatabase = "achievements",
-    mysqlUser = "achievements_api",
-    mysqlPassword = ""
+    mysqlUser = "username",
+    mysqlPassword = "password"
 }
