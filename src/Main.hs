@@ -16,6 +16,7 @@ import Data.Maybe
 --TODO: There are at least a few cases where it'd be faster if I converted
 -- to Text earlier in the chain, and manually called the prelude ones when necessary
 import Data.Text hiding (map, concat, head, last, zip)
+import Data.Map (toList, Map)
 import Text.JSON
 
 import Config
@@ -31,18 +32,18 @@ site =
     method POST post <|>
     dir "documentation" (serveDirectory "dist/dox")
     where
-        get  = route [ ("apps/", listApps),
-                       ("apps/:appName/users", listAppUsers),
-                       ("apps/:appName", listAppAchievements),
-                       ("apps/:appName/events", listAppEvents),
-                       ("apps/:appName/:userName", listUserAchievements),
-                       ("apps/:appName/users/:userName", listUserAchievements),
-                       ("events/", listAllAppEvents),
-                       ("events/:appName", listAppEvents),
-                       ("users/:userName", listAllUserAchievements)
+        get  = route [ ("apps/", listApps)
+                     , ("apps/:appName/users", listAppUsers)
+                     , ("apps/:appName", listAppAchievements)
+                     , ("apps/:appName/events", listAppEvents)
+                     , ("apps/:appName/:userName", listUserAchievements)
+                     , ("apps/:appName/users/:userName", listUserAchievements)
+                     , ("events/", listAllAppEvents)
+                     , ("events/:appName", listAppEvents)
+                     , ("users/:userName", listAllUserAchievements)
                      ]
-        post = route [ ("users/:userName", createUser),
-                       ("apps/:appName/achievements", updateAchievement)
+        post = route [ ("users/:userName", createUser)
+                     , ("apps/:appName/achievements", updateAchievement)
                      ]
 
 -- Should research if HDBC's SQL properly escapes everything if put in as parameters
@@ -72,6 +73,8 @@ toJSONType (SqlInt64 x) = JSRational False $ fromIntegral x
 toJSONType (SqlString x) = JSString $ toJSString x
 toJSONType (SqlByteString x) = JSString $ toJSString $ C.unpack x
 toJSONType (SqlPOSIXTime x) = JSRational False $ (fromRational . toRational ) x
+
+-- 
 
 listApps :: Snap ()
 listApps = do
@@ -127,8 +130,8 @@ getAchievement appName achievementid = do
   -- return $ jsonAssemble "achievementProgress" ["progress", "maxProgress"] $ map fromSql $ progressQuery !! 0
 
 getUserAchievementProgress appName userName achievementid = do
-  progressQuery <- getQuery "SELECT t1.progress, t2.progress_max FROM (achievement_progress AS t1 INNER JOIN achievements AS t2 ON t1.achievement_id=t2.id INNER JOIN apps on apps.id = t2.app_id) JOIN users AS t3 ON t1.user_id=t3.id WHERE t3.username=(?) AND apps.name like (?) AND t2.id=(?)" [toSql userName, toSql appName, toSql achievementid]
-  return $ jsonAssemble "achievementProgress" ["progress", "maxProgress"] progressQuery
+  rows <- getQuery "SELECT t1.progress, t2.progress_max FROM (achievement_progress AS t1 INNER JOIN achievements AS t2 ON t1.achievement_id=t2.id INNER JOIN apps on apps.id = t2.app_id) JOIN users AS t3 ON t1.user_id=t3.id WHERE t3.username=(?) AND apps.name like (?) AND t2.id=(?)" [toSql userName, toSql appName, toSql achievementid]
+  return $ jsonAssemble "achievementProgress" ["progress", "maxProgress"] rows
   
 listUserAchievementProgress :: Snap ()
 listUserAchievementProgress = do
@@ -140,16 +143,16 @@ listUserAchievementProgress = do
 
 listUserAchievements :: Snap ()
 listUserAchievements = do
-    appName <- safeGetParam "appName"
-    userName <- safeGetParam "userName"
-    result <- liftIO $ getUserAchievements appName userName
-    writeText $ pack result
+  appName <- safeGetParam "appName"
+  userName <- safeGetParam "userName"
+  result <- liftIO $ getUserAchievements appName userName
+  writeText $ pack result
 
 listAllUserAchievements :: Snap ()
 listAllUserAchievements = do
-    userName <- safeGetParam "userName"
-    result <- liftIO $ getUserAchievements (pack "%") userName
-    writeText $ pack result
+  userName <- safeGetParam "userName"
+  result <- liftIO $ getUserAchievements (pack "%") userName
+  writeText $ pack result
 
 getUserAchievements appName userName = do
   rows <- getQuery "SELECT apps.name, t2.title, t2.description, t2.progress_max, t1.progress, t2.score, t1.updated_at FROM (achievement_progress AS t1 INNER JOIN achievements AS t2 ON t1.achievement_id=t2.id INNER JOIN apps on apps.id = t2.app_id) JOIN users AS t3 ON t1.user_id=t3.id  WHERE t1.progress!=0 AND t3.username=(?) AND apps.name like (?)" [toSql userName, toSql appName]
@@ -167,24 +170,10 @@ updateUserAchievements = do
 -- This is also going to auth the user, although for now this is just a facade - the api will just accept anything
 createUser :: Snap()
 createUser = do
-  appName <- safeGetParam "appName"
   userName <- safeGetParam "userName"
   writeBS "Totally worked, dude!" -- it's funny, because it's bs
 
 updateAchievement :: Snap ()
 updateAchievement = do
-  -- writeBS "USGHDSKLJ"
-  appName <- safeGetParam "appName"
-  userName <- safeGetParam "username"
-  achievementid <- safeGetParam "id"
-  achievementProgress <- safeGetParam "progress"
-  writeBS "What now?"
-  -- chievoprog <- getUserAchievementProgress appName userName achievementid
-  -- writeText $ show $ updateProg appName userName achievementid achievementProgress chievoprog
-
--- updateProg appName userName achievementid achievementProgress currProg
-    -- | currProg !! 0 >= currProg !! 1 = "You've already earned this achievement!"
-    -- | currProg !! 0 + achievementProgress >= currProg !! 1 = "You've earned this achievement, in real time!"
-    -- | currProg !! 0 < currProg !! 1 = "Old Progress - " ++ (currProg !! 0) ++ "\nNew Progress - " ++ (currProg !! 0) ++ achievementProgress
-
+  request <- getRequestBody -- gets the request body (it should be in json)
 --EOF--
