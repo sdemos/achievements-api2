@@ -7,20 +7,20 @@ import Snap.Util.FileServe
 import Snap.Http.Server
 
 import Control.Monad
-import Database.HDBC
-import Database.HDBC.MySQL
 import qualified Data.ByteString as B hiding (map)
 import qualified Data.ByteString.Char8 as C hiding (map)
+import qualified Data.ByteString.Lazy.Char8 as L hiding (map)
 import Control.Monad.Trans
 import Data.Maybe
 --TODO: There are at least a few cases where it'd be faster if I converted
 -- to Text earlier in the chain, and manually called the prelude ones when necessary
 import Data.Text hiding (map, concat, head, last, zip)
 import Data.Map (toList, Map)
-import Text.JSON
 
 import Config
 import Data.Ratio
+import WriteJSON
+import DBTalk
 
 main :: IO ()
 main = quickHttpServe site
@@ -42,48 +42,17 @@ site =
                      , ("events/:appName", listAppEvents)
                      , ("users/:userName", listAllUserAchievements)
                      ]
-        post = route [ ("users/:userName", createUser)
-                     , ("apps/:appName/achievements", updateAchievement)
-                     ]
+        post = route [ ("apps/:appName/achievements", updateUserAchievements) ]
 
 -- Should research if HDBC's SQL properly escapes everything if put in as parameters
 safeGetParam :: MonadSnap f => B.ByteString -> f B.ByteString
 safeGetParam paramName = fromMaybe "" <$> getParam paramName
 
---getQuery :: String -> [SqlValue] -> IO [[SqlValue]]
-getQuery query params =
-    withRTSSignalsBlocked $ do
-        conn <- connectMySQL connectInfo
-        quickQuery' conn query params
-
-jsonAssemble listName fields rows =
-  encode $ toJSObject
-    [
-      (listName,
-          map (toJSObject . zip fields . map toJSONType) rows
-      )
-    ]
-
--- As a point of order I'm like 100% sure all of the Integers I push across the wire can work
--- in Javascript's hilariously terrible 2^53 'integer' max, since it actually only has floating point numbers.
-toJSONType :: SqlValue -> JSValue
-toJSONType (SqlInteger x) = JSRational False $ fromIntegral x
-toJSONType (SqlInt32 x) = JSRational False $ fromIntegral x
-toJSONType (SqlInt64 x) = JSRational False $ fromIntegral x
-toJSONType (SqlString x) = JSString $ toJSString x
-toJSONType (SqlByteString x) = JSString $ toJSString $ C.unpack x
-toJSONType (SqlPOSIXTime x) = JSRational False $ (fromRational . toRational ) x
-
--- 
 
 listApps :: Snap ()
 listApps = do
-  result <- liftIO getApps
-  writeText $ pack result
-
-getApps = do
-  rows <- getQuery "SELECT name, description FROM apps" []
-  return $ jsonAssemble "apps" ["name", "description"] rows
+    result <- liftIO getApps
+    writeText $ pack result
 
 listAppUsers :: Snap ()
 listAppUsers = do
@@ -91,22 +60,21 @@ listAppUsers = do
     result <- liftIO $ getUsers appName
     writeText $ pack result
 
-getUsers appName = do
-  rows <- getQuery "SELECT (t1.app_username) FROM users_in_apps AS t1 INNER JOIN apps AS t2 ON t1.app_id=t2.id WHERE t2.name=(?)" [toSql appName]
-  return $ jsonAssemble "users" ["username"] rows
-
 listAppEvents = do
-  appName <- safeGetParam "appName"
-  result <- liftIO $ getEvents appName
-  writeText $ pack result
+    appName <- safeGetParam "appName"
+    result <- liftIO $ getEvents appName
+    writeText $ pack result
 
 listAllAppEvents = do
-  result <- liftIO $ getEvents $ pack "%"
-  writeText $ pack result
+    result <- liftIO $ getEvents $ pack "%"
+    writeText $ pack result
 
-getEvents appName = do
-  rows <- getQuery "SELECT apps.name, events.title, events.start_time, events.end_time FROM apps INNER JOIN events on apps.id = events.game_id WHERE apps.name like (?)" [toSql appName]
-  return $ jsonAssemble "events" ["app name", "event title", "start time", "end time"] rows
+listAchievement :: Snap ()
+listAchievement = do
+    appName <- safeGetParam "appName"
+    achievementid <- safeGetParam "achievement"
+    result <- liftIO $ getAchievement appName achievementid
+    writeText $ pack result
 
 listAppAchievements :: Snap ()
 listAppAchievements = do
@@ -114,66 +82,49 @@ listAppAchievements = do
     result <- liftIO $ getAppAchievements appName
     writeText $ pack result
 
-getAppAchievements appName = do
-  rows <- getQuery "SELECT achievements.id, title, achievements.description, score FROM achievements INNER JOIN apps on achievements.app_id = apps.id where apps.name like (?)" [toSql appName]
-  return $ jsonAssemble "achievements" ["id", "title", "description", "score"] rows
-
-getAchievement appName achievementid = do
-  rows <- getQuery "SELECT achievements.id, title, achievements.description, score FROM achievements INNER JOIN apps on achievements.app_id = apps.id WHERE achievements.id = (?) AND apps.name like (?)" [toSql achievementid, toSql appName]
-  return $ jsonAssemble "achievements" ["id", "title", "description", "score"] rows
-
 -- Do I really need this function?
 -- Yes, because it will return it to the user
 -- getUserAchievementProgress :: [Char] -> [Char] -> Int -> [Integer]
 -- getUserAchievementProgress appName userName achievementid = do
   -- progressQuery <- (getQuery "SELECT t1.progress, t2.progress_max FROM (achievement_progress AS t1 INNER JOIN achievements AS t2 ON t1.achievement_id=t2.id INNER JOIN apps on apps.id = t2.app_id) JOIN users AS t3 ON t1.user_id=t3.id WHERE t3.username=(?) AND apps.name like (?) AND t2.id=(?)" [toSql userName, toSql appName, toSql achievementid])
   -- return $ jsonAssemble "achievementProgress" ["progress", "maxProgress"] $ map fromSql $ progressQuery !! 0
-
-getUserAchievementProgress appName userName achievementid = do
-  rows <- getQuery "SELECT t1.progress, t2.progress_max FROM (achievement_progress AS t1 INNER JOIN achievements AS t2 ON t1.achievement_id=t2.id INNER JOIN apps on apps.id = t2.app_id) JOIN users AS t3 ON t1.user_id=t3.id WHERE t3.username=(?) AND apps.name like (?) AND t2.id=(?)" [toSql userName, toSql appName, toSql achievementid]
-  return $ jsonAssemble "achievementProgress" ["progress", "maxProgress"] rows
   
 listUserAchievementProgress :: Snap ()
 listUserAchievementProgress = do
-  appName <- safeGetParam "appName"
-  userName <- safeGetParam "userName"
-  achievementid <- safeGetParam "achievementid"
-  result <- liftIO $ getUserAchievementProgress appName userName achievementid
-  writeText $ pack result
+    appName <- safeGetParam "appName"
+    userName <- safeGetParam "userName"
+    achievementid <- safeGetParam "achievementid"
+    result <- liftIO $ getUserAchievementProgress appName userName achievementid
+    writeText $ pack result
 
 listUserAchievements :: Snap ()
 listUserAchievements = do
-  appName <- safeGetParam "appName"
-  userName <- safeGetParam "userName"
-  result <- liftIO $ getUserAchievements appName userName
-  writeText $ pack result
+    appName <- safeGetParam "appName"
+    userName <- safeGetParam "userName"
+    result <- liftIO $ getUserAchievements appName userName
+    writeText $ pack result
+
+-- listUserAchievements :: Snap ()
+-- listUserAchievements = do
+    -- result <- liftIO $ getUserAchievements <$>
+              -- (safeGetParam "appName")     <*>
+              -- (safeGetParam "userName")
+    -- writeText $ pack result
 
 listAllUserAchievements :: Snap ()
 listAllUserAchievements = do
-  userName <- safeGetParam "userName"
-  result <- liftIO $ getUserAchievements (pack "%") userName
-  writeText $ pack result
-
-getUserAchievements appName userName = do
-  rows <- getQuery "SELECT apps.name, t2.title, t2.description, t2.progress_max, t1.progress, t2.score, t1.updated_at FROM (achievement_progress AS t1 INNER JOIN achievements AS t2 ON t1.achievement_id=t2.id INNER JOIN apps on apps.id = t2.app_id) JOIN users AS t3 ON t1.user_id=t3.id  WHERE t1.progress!=0 AND t3.username=(?) AND apps.name like (?)" [toSql userName, toSql appName]
-  return $ jsonAssemble "achievements" ["app name", "title", "description", "max progress", "user progress", "score", "updated at"] rows
+    userName <- safeGetParam "userName"
+    result <- liftIO $ getUserAchievements (pack "%") userName
+    writeText $ pack result
 
 -- Must provide a correct game key for this app; not even close to done yet and I'm not sure how I will be implementing this
+-- updateUserAchievements :: Snap ()
+-- updateUserAchievements = 
+    -- writeLBS ((L.pack . show) (decodeToAchievement <$> getRequestBody))
+
 updateUserAchievements :: Snap ()
 updateUserAchievements = do
-  appName <- getParam "appName"
-  userName <- getParam "userName"
-  gameKey <- getQueryParam "gameKey"
-  maybe (writeBS "An authenticated gameKey is required to update player information")
-    writeBS gameKey
+    request <- getRequestBody
+    writeLBS ((L.pack . show) ((decodeToAchievement request) >>= checkAchievement))
 
--- This is also going to auth the user, although for now this is just a facade - the api will just accept anything
-createUser :: Snap()
-createUser = do
-  userName <- safeGetParam "userName"
-  writeBS "Totally worked, dude!" -- it's funny, because it's bs
-
-updateAchievement :: Snap ()
-updateAchievement = do
-  request <- getRequestBody -- gets the request body (it should be in json)
 --EOF--
