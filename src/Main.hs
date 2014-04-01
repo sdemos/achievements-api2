@@ -32,17 +32,17 @@ site =
     method POST post <|>
     dir "documentation" (serveDirectory "dist/dox")
     where
-        get  = route [ ("apps/", listApps)
+        get  = route [ ("apps", listApps)
                      , ("apps/:appName/users", listAppUsers)
                      , ("apps/:appName", listAppAchievements)
                      , ("apps/:appName/events", listAppEvents)
                      , ("apps/:appName/:userName", listUserAchievements)
                      , ("apps/:appName/users/:userName", listUserAchievements)
-                     , ("events/", listAllAppEvents)
+                     , ("events", listAllAppEvents)
                      , ("events/:appName", listAppEvents)
                      , ("users/:userName", listAllUserAchievements)
                      ]
-        post = route [ ("apps/:appName/achievements", updateUserAchievements) ]
+        post = route [ ("achievements", updateUserAchievements) ]
 
 -- Should research if HDBC's SQL properly escapes everything if put in as parameters
 safeGetParam :: MonadSnap f => B.ByteString -> f B.ByteString
@@ -60,11 +60,13 @@ listAppUsers = do
     result <- liftIO $ getUsers appName
     writeText $ pack result
 
+listAppEvents :: Snap ()
 listAppEvents = do
     appName <- safeGetParam "appName"
     result <- liftIO $ getEvents appName
     writeText $ pack result
 
+listAllAppEvents :: Snap ()
 listAllAppEvents = do
     result <- liftIO $ getEvents $ pack "%"
     writeText $ pack result
@@ -82,13 +84,6 @@ listAppAchievements = do
     result <- liftIO $ getAppAchievements appName
     writeText $ pack result
 
--- Do I really need this function?
--- Yes, because it will return it to the user
--- getUserAchievementProgress :: [Char] -> [Char] -> Int -> [Integer]
--- getUserAchievementProgress appName userName achievementid = do
-  -- progressQuery <- (getQuery "SELECT t1.progress, t2.progress_max FROM (achievement_progress AS t1 INNER JOIN achievements AS t2 ON t1.achievement_id=t2.id INNER JOIN apps on apps.id = t2.app_id) JOIN users AS t3 ON t1.user_id=t3.id WHERE t3.username=(?) AND apps.name like (?) AND t2.id=(?)" [toSql userName, toSql appName, toSql achievementid])
-  -- return $ jsonAssemble "achievementProgress" ["progress", "maxProgress"] $ map fromSql $ progressQuery !! 0
-  
 listUserAchievementProgress :: Snap ()
 listUserAchievementProgress = do
     appName <- safeGetParam "appName"
