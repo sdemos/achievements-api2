@@ -11,10 +11,10 @@ import Data.Maybe
 import DBTalk
 
 data Achievement = Achievement 
-    { username     :: String
-    , id           :: Maybe Int    -- needs either the id
-    , title        :: Maybe String -- or the title
-    , userProgress :: Maybe Int    -- if no user progress, just assume max
+    { username :: String
+    , aid      :: Maybe Int    -- needs either the id
+    , title    :: Maybe String -- or the title
+    , progress :: Maybe Int    -- if no user progress, just assume max
     } deriving (Show)
 
 data AchievementUpdate = AchievementUpdate 
@@ -29,7 +29,7 @@ instance FromJSON Achievement where
         (v .:  "username") <*>
         (v .:? "id")       <*>
         (v .:? "title")    <*>
-        (v .:? "userProgress")
+        (v .:? "progress")
 
 instance FromJSON AchievementUpdate where
     parseJSON (Object v) =
@@ -71,21 +71,37 @@ checkUser = Just
 --        will work, or a valid name and an invalid id and it will fail
 checkID :: AchievementUpdate -> Maybe AchievementUpdate
 checkID a
-    | isNothing aid = if isNothing titlecheck
+    -- | isNothing i = atitle >>= getAchievementByNameCheck >>= \x -> Just (a { achievement = (chievo { aid = x }) })
+    | isNothing i = if isNothing titlecheck
         then Nothing -- either there is no id or name, or there is no id and the name is invalid
-        else Just (a { achievement = ((achievement a) { WriteJSON.id = titlecheck }) })
-    | isNothing (aid >>= getAchievementByIdCheck) = Nothing -- id is invalid
-    | otherwise = Just a    -- the id is valid
-    where aid        = WriteJSON.id chievo   -- Maybe Int
-          atitle     = title chievo          -- Maybe String
-          chievo     = achievement a         -- Achievement 
+        else Just (a { achievement = (chievo { aid = titlecheck }) })
+    | isNothing (i >>= getAchievementByIdCheck) = Nothing -- id is invalid
+    | otherwise = Just a            -- the id is valid
+    where i      = aid chievo       -- Maybe Int
+          atitle = title chievo     -- Maybe String
+          chievo = achievement a    -- Achievement 
           titlecheck = atitle >>= getAchievementByNameCheck
 
 -- this will do one of four things - 
---  - return the achievementupdate if progress is provided and providedprogress+currentprogress < maxprogress
 --  - return a new achievementupdate if no progress is provided, with progress set as maxprogress-currentprogress
+--  - return the achievementupdate if progress is provided and providedprogress+currentprogress < maxprogress
 --  - return nothing if providedprogress+currentprogress > maxprogress
---  - return nothing if providedprogress+currentprogress < 0 (if providedprogress is negative for going backwards or something)
+--  - return a new achievementupdate with progress of -currentprogress if providedprogress+currentprogress < 0 
+--    (if providedprogress is negative for going backwards or something)
 checkProgress :: AchievementUpdate -> Maybe AchievementUpdate
-checkProgress = Just
+-- checkProgress = Just
+checkProgress a
+    | isNothing provprog                        = Just (a { achievement = (chievo { progress = maxprog }) })
+    | isNothing newprog                         = Just a    -- there is no current progress in the database
+    | fromJust ((< 0) <$> newprog)              = Just (a { achievement = (chievo { progress = negate <$> currprog }) })
+    | fromJust ((>) <$> maxprog <*> newprog)    = Nothing
+    | otherwise                                 = Just a
+    where currprog = getCurrProg user i             -- Maybe Int
+          provprog = progress chievo                -- Maybe Int
+          newprog  = (+) <$> currprog <*> provprog  -- Maybe Int - add currprog and provprog
+          maxprog  = getMaxProg i                   -- Int - This is definitely there because it is checked already
+          i        = fromJust $ aid chievo          -- Int - This is definitely there because it is checked already
+          user     = username chievo                -- String - username
+          chievo   = achievement a                  -- achievement datatype
+          
 

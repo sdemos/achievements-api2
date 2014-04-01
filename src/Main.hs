@@ -6,19 +6,19 @@ import Snap.Core
 import Snap.Util.FileServe
 import Snap.Http.Server
 
-import Control.Monad
+-- import Control.Monad
 import qualified Data.ByteString as B hiding (map)
-import qualified Data.ByteString.Char8 as C hiding (map)
+-- import qualified Data.ByteString.Char8 as C hiding (map)
 import qualified Data.ByteString.Lazy.Char8 as L hiding (map)
 import Control.Monad.Trans
 import Data.Maybe
 --TODO: There are at least a few cases where it'd be faster if I converted
 -- to Text earlier in the chain, and manually called the prelude ones when necessary
 import Data.Text hiding (map, concat, head, last, zip)
-import Data.Map (toList, Map)
+-- import Data.Map (toList, Map)
+-- import Data.Ratio
 
-import Config
-import Data.Ratio
+import Config()
 import WriteJSON
 import DBTalk
 

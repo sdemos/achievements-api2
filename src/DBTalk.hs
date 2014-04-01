@@ -8,7 +8,8 @@ module DBTalk
 , getAchievementByName
 , getUserAchievementProgress
 , getUserAchievements
-, getAchievementMax
+, getMaxProg
+, getCurrProg
 , getAppKey
 , getUserCheck
 , getUserInAppCheck
@@ -21,20 +22,21 @@ import Control.Applicative ((<$>))
 import Data.Maybe
 import Database.HDBC
 import Database.HDBC.MySQL
-import Data.Map (toList, Map)
+-- import Data.Map (toList, Map)
 import Text.JSON
 import qualified Data.ByteString.Char8 as C hiding (map)
-import qualified Data.ByteString.Lazy.Char8 as L hiding (map)
+import qualified Data.ByteString.Lazy.Char8 as L()
 import Config
 import System.IO.Unsafe
-import Data.Convertible.Base
+-- import Data.Convertible.Base
 
---getQuery :: String -> [SqlValue] -> IO [[SqlValue]]
+getQuery :: String -> [SqlValue] -> IO [[SqlValue]]
 getQuery query params =
     withRTSSignalsBlocked $ do
         conn <- connectMySQL connectInfo
         quickQuery' conn query params
 
+jsonAssemble :: String -> [String] -> [[SqlValue]] -> String
 jsonAssemble listName fields rows =
     encode $ toJSObject
         [ (listName, map (toJSObject . zip fields . map toJSONType) rows) ]
@@ -49,6 +51,7 @@ toJSONType (SqlString x) = JSString $ toJSString x
 toJSONType (SqlByteString x) = JSString $ toJSString $ C.unpack x
 toJSONType (SqlPOSIXTime x) = JSRational False $ (fromRational . toRational ) x
 
+getApps :: IO String
 getApps = jsonAssemble "apps" ["name", "description"] <$> getQuery "SELECT name, description FROM apps" []
 
 getUsers appName = jsonAssemble "users" ["username"] <$>
@@ -80,9 +83,14 @@ getUserAchievements appName userName = jsonAssemble "achievements" ["app name", 
 
 -- returns a Maybe Int
 -- getAchievementMax :: (Convertible a SqlValue, Convertible a1 SqlValue) => a -> a1 -> Maybe Int
-getAchievementMax appName achievementid = fromSql <$> (!!0) <$> unsafePerformIO (listToMaybe <$> 
-    getQuery "SELECT progress_max FROM achievements INNER JOIN apps ON achievements.app_id = apps.id WHERE achievements.id = (?) AND apps.name like (?)" 
-    [toSql achievementid, toSql appName]
+getMaxProg achievementid = fromSql <$> (!!0) <$> unsafePerformIO (listToMaybe <$> 
+    getQuery "SELECT progress_max FROM achievements WHERE achievements.id = (?)" 
+    [toSql achievementid]
+    ) :: Maybe Int
+
+getCurrProg username achievementid = fromSql <$> (!!0) <$> unsafePerformIO (listToMaybe <$> 
+    getQuery "SELECT progress FROM achievement_progress INNER JOIN users ON user_id = id WHERE achievements.id = (?) AND username = (?)" 
+    [toSql achievementid, toSql username]
     ) :: Maybe Int
 
 -- returns a Maybe String
