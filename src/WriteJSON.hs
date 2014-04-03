@@ -4,42 +4,15 @@ module WriteJSON
 , checkAchievement
 ) where
 
-import Data.Aeson ((.:), (.:?), decode, FromJSON(..), Value(..))
-import Control.Applicative ((<$>), (<*>))
+import Data.Aeson (decode)
+import Control.Applicative ((<$>))
 import qualified Data.ByteString.Lazy.Char8 as L
 import Data.Maybe
 import DBTalk
-
-data Achievement = Achievement 
-    { username :: String
-    , aid      :: Maybe Int    -- needs either the id
-    , title    :: Maybe String -- or the title
-    , progress :: Maybe Int    -- if no user progress, just assume max
-    } deriving (Show)
-
-data AchievementUpdate = AchievementUpdate 
-    { app_name    :: String
-    , app_key     :: String
-    , achievement :: Achievement
-    } deriving (Show)
-
-instance FromJSON Achievement where
-    parseJSON (Object v) =
-        Achievement        <$>
-        (v .:  "username") <*>
-        (v .:? "id")       <*>
-        (v .:? "title")    <*>
-        (v .:? "progress")
-
-instance FromJSON AchievementUpdate where
-    parseJSON (Object v) =
-        AchievementUpdate <$>
-        (v .: "app_name") <*>
-        (v .: "app_key")  <*>
-        (v .: "achievement")
+import Achievement
 
 decodeToAchievement :: L.ByteString -> Maybe AchievementUpdate
-decodeToAchievement json = decode json-- :: Maybe AchievementUpdate
+decodeToAchievement json = decode json -- :: Maybe AchievementUpdate
 
 checkAchievement :: AchievementUpdate -> Maybe AchievementUpdate
 checkAchievement a = checkAppKey a >>= checkUser >>= checkID >>= checkProgress
@@ -47,21 +20,18 @@ checkAchievement a = checkAppKey a >>= checkUser >>= checkID >>= checkProgress
 -- also happens to check the app name now! Cool!
 checkAppKey :: AchievementUpdate -> Maybe AchievementUpdate
 checkAppKey a
-    | isNothing key = Nothing   -- The name of the app is incorrect
+    | isNothing key = Nothing   -- The name of the app is incorrect (or you don't have an app_key)
     | fromJust  key = Just a    -- The key is the correct key for this app
     | otherwise     = Nothing   -- The key is not the correct key for this app
     where key = (app_key a ==) <$> (getAppKey $ app_name a)
 
--- this will see if the user exists, and if not, create the user
--- that means it won't return nothing, because there is no failure!
--- but it will continue to return a maybe achievementupdate so it can be chained in the checkachievement
 checkUser :: AchievementUpdate -> Maybe AchievementUpdate
-checkUser = Just
--- checkUser a
-    -- | isNothing dbuser = addUser
-    -- | otherwise        = Just a
-    -- where dbuser = (username ==) <$> (getUserId username)
-          -- username = username a
+-- checkUser = Just
+checkUser a
+    | isNothing dbuser = Nothing
+    | otherwise        = Just a
+    where dbuser  = getUserCheck user
+          user    = username $ achievement a
 
 -- this will do one of three things - 
 --  - return the achievementupdate as is if it already has a valid id
@@ -82,26 +52,19 @@ checkID a
           chievo = achievement a    -- Achievement 
           titlecheck = atitle >>= getAchievementByNameCheck
 
--- this will do one of four things - 
---  - return a new achievementupdate if no progress is provided, with progress set as maxprogress-currentprogress
---  - return the achievementupdate if progress is provided and providedprogress+currentprogress < maxprogress
---  - return nothing if providedprogress+currentprogress > maxprogress
---  - return a new achievementupdate with progress of -currentprogress if providedprogress+currentprogress < 0 
---    (if providedprogress is negative for going backwards or something)
+-- returns a new achievementupdate with the progress bounded to the maximum and minimum possible progress values
+-- to add, or default to maximum
 checkProgress :: AchievementUpdate -> Maybe AchievementUpdate
--- checkProgress = Just
 checkProgress a
-    | isNothing provprog                        = Just (a { achievement = (chievo { progress = maxprog }) })
-    | isNothing newprog                         = Just a    -- there is no current progress in the database
-    | fromJust ((< 0) <$> newprog)              = Just (a { achievement = (chievo { progress = negate <$> currprog }) })
-    | fromJust ((>) <$> maxprog <*> newprog)    = Nothing
-    | otherwise                                 = Just a
-    where currprog = getCurrProg user i             -- Maybe Int
-          provprog = progress chievo                -- Maybe Int
-          newprog  = (+) <$> currprog <*> provprog  -- Maybe Int - add currprog and provprog
-          maxprog  = getMaxProg i                   -- Int - This is definitely there because it is checked already
-          i        = fromJust $ aid chievo          -- Int - This is definitely there because it is checked already
-          user     = username chievo                -- String - username
-          chievo   = achievement a                  -- achievement datatype
-          
+    | provprog > maxprog         = setprog maxprog
+    | provprog < negate currprog = setprog $ negate currprog
+    | otherwise                  = setprog provprog
+    where currprog  = fromMaybe 0 $ getCurrProg user i      -- the current progress for the user
+          provprog  = fromMaybe maxprog (progress chievo)   -- the provided progress or the default
+          maxprog   = (fromJust $ getMaxProg i) - currprog  -- the maximum possible progress that can be added
+          i         = fromJust $ aid chievo                 -- the id for the achievement
+          user      = username chievo                       -- the username for the user getting the achievement
+          chievo    = achievement a                         -- the achievement object in the request
+          setprog x = Just (a { achievement = (chievo { progress = Just x }) })
+          -- returns a new achievementupdate with the updated progress, wrapped in a just
 

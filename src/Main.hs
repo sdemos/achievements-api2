@@ -17,6 +17,7 @@ import Data.Maybe
 import Data.Text hiding (map, concat, head, last, zip)
 -- import Data.Map (toList, Map)
 -- import Data.Ratio
+-- import System.IO
 
 import Config()
 import WriteJSON
@@ -42,7 +43,9 @@ site =
                      , ("events/:appName", listAppEvents)
                      , ("users/:userName", listAllUserAchievements)
                      ]
-        post = route [ ("achievements", updateUserAchievements) ]
+        post = route [ ("achievements", postUserAchievements) 
+                     , ("users/create", createUser)
+                     ]
 
 -- Should research if HDBC's SQL properly escapes everything if put in as parameters
 safeGetParam :: MonadSnap f => B.ByteString -> f B.ByteString
@@ -113,13 +116,24 @@ listAllUserAchievements = do
     writeText $ pack result
 
 -- Must provide a correct game key for this app; not even close to done yet and I'm not sure how I will be implementing this
--- updateUserAchievements :: Snap ()
--- updateUserAchievements = 
+-- postUserAchievements :: Snap ()
+-- postUserAchievements = 
     -- writeLBS ((L.pack . show) (decodeToAchievement <$> getRequestBody))
 
-updateUserAchievements :: Snap ()
-updateUserAchievements = do
+postUserAchievements :: Snap ()
+postUserAchievements = do
     request <- getRequestBody
-    writeLBS ((L.pack . show) ((decodeToAchievement request) >>= checkAchievement))
+    -- uncommenting this line and commenting out the next two will return the parsed achievment data
+    -- instead of updating the achievement in the database, for debugging purposes
+    -- writeLBS ((L.pack . show) ((decodeToAchievement request) >>= checkAchievement))
+    result <- liftIO (maybe ((return 1)) updateUserAchievement (decodeToAchievement request >>= checkAchievement))
+    writeLBS ((L.pack.show) result)
+
+-- postUserAchievements :: Snap ()
+-- postUserAchievements = do
+    -- request <- getRequestBody
+
+createUser :: Snap ()
+createUser = writeLBS "nothing much now"
 
 --EOF--

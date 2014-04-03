@@ -16,25 +16,33 @@ module DBTalk
 -- , getQuery
 , getAchievementByNameCheck
 , getAchievementByIdCheck
+, updateUserAchievement
 ) where
 
 import Control.Applicative ((<$>))
 import Data.Maybe
 import Database.HDBC
 import Database.HDBC.MySQL
--- import Data.Map (toList, Map)
 import Text.JSON
 import qualified Data.ByteString.Char8 as C hiding (map)
 import qualified Data.ByteString.Lazy.Char8 as L()
 import Config
 import System.IO.Unsafe
--- import Data.Convertible.Base
+import System.IO
+import Achievement
 
 getQuery :: String -> [SqlValue] -> IO [[SqlValue]]
 getQuery query params =
     withRTSSignalsBlocked $ do
         conn <- connectMySQL connectInfo
         quickQuery' conn query params
+
+runQuery :: String -> [SqlValue] -> IO ()
+runQuery query params = 
+    withRTSSignalsBlocked $ do
+        conn <- connectMySQL connectInfo
+        retval <- run conn query params
+        commit conn
 
 jsonAssemble :: String -> [String] -> [[SqlValue]] -> String
 jsonAssemble listName fields rows =
@@ -89,7 +97,7 @@ getMaxProg achievementid = fromSql <$> (!!0) <$> unsafePerformIO (listToMaybe <$
     ) :: Maybe Int
 
 getCurrProg username achievementid = fromSql <$> (!!0) <$> unsafePerformIO (listToMaybe <$> 
-    getQuery "SELECT progress FROM achievement_progress INNER JOIN users ON user_id = id WHERE achievements.id = (?) AND username = (?)" 
+    getQuery "SELECT progress FROM achievement_progress INNER JOIN users ON user_id = id WHERE achievement_progress.achievement_id = (?) AND username = (?)" 
     [toSql achievementid, toSql username]
     ) :: Maybe Int
 
@@ -99,12 +107,10 @@ getAppKey appName = fromSql <$> (!!0) <$> unsafePerformIO (listToMaybe <$>
     [toSql appName])
     ) :: Maybe String
 
--- returns a Maybe anything you want baby
--- (this is because I just need this to see if it is there at all)
 getUserCheck username = fromSql <$> (!!0) <$> unsafePerformIO (listToMaybe <$> 
-    (getQuery "SELECT * FROM `users` WHERE `username` LIKE (?)" 
+    (getQuery "SELECT `id` FROM `users` WHERE `username` LIKE (?)" 
     [toSql username])
-    ) :: Maybe String
+    ) :: Maybe Int
 
 getUserInAppCheck username = fromSql <$> (!!0) <$> unsafePerformIO (listToMaybe <$> 
     (getQuery "SELECT * FROM `users_in_apps` INNER_JOIN `users` ON `user_id` = `id` WHERE `username` LIKE (?)" 
@@ -121,4 +127,25 @@ getAchievementByNameCheck aname = fromSql <$> (!!0) <$> unsafePerformIO (listToM
     (getQuery "SELECT `id` FROM `achievements` WHERE `title` LIKE (?)" 
     [toSql aname])
     ) :: Maybe Int
+
+-- This is the actual updating
+
+-- creates a user
+-- createdbUser username
+
+-- updates an achievement
+updateUserAchievement :: AchievementUpdate -> IO Int
+updateUserAchievement a
+    | isNothing currprog = -- the user has no current progress on this achievement
+        runQuery "INSERT INTO achievement_progress (user_id, achievement_id, progress) VALUES (?, ?, ?)"
+        [toSql uid, toSql i, toSql prog] >> (return 0) :: IO Int
+    | otherwise = -- the user has current progres in this achievement
+        runQuery "UPDATE achievement_progress SET progress = progress+(?) WHERE user_id = (?) AND achievement_id = (?)"
+        [toSql prog, toSql uid, toSql i] >> (return 0) :: IO Int
+    where currprog  = getCurrProg user i
+          user      = username chievo
+          chievo    = achievement a
+          uid       = fromJust $ getUserCheck user
+          i         = fromJust $ aid chievo
+          prog      = fromJust $ progress chievo
 

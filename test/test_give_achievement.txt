@@ -1,0 +1,1 @@
+{"app_name":"nethack", "app_key": "bee538112f0485a2d56e44c4c2a31bf109042df40447dcf6acc1b586a2018ae2", "achievement": {"id": 4, "username": "demos"}}
