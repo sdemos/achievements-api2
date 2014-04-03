@@ -13,7 +13,6 @@ module DBTalk
 , getAppKey
 , getUserCheck
 , getUserInAppCheck
--- , getQuery
 , getAchievementByNameCheck
 , getAchievementByIdCheck
 , updateUserAchievement
@@ -129,9 +128,6 @@ getAchievementByNameCheck aname = fromSql <$> (!!0) <$> unsafePerformIO (listToM
     ) :: Maybe Int
 
 -- This is the actual updating
-
--- creates a user
--- createdbUser username
 
 -- updates an achievement
 updateUserAchievement :: AchievementUpdate -> IO Int

@@ -26,7 +26,6 @@ checkAppKey a
     where key = (app_key a ==) <$> (getAppKey $ app_name a)
 
 checkUser :: AchievementUpdate -> Maybe AchievementUpdate
--- checkUser = Just
 checkUser a
     | isNothing dbuser = Nothing
     | otherwise        = Just a

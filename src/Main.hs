@@ -6,19 +6,11 @@ import Snap.Core
 import Snap.Util.FileServe
 import Snap.Http.Server
 
--- import Control.Monad
 import qualified Data.ByteString as B hiding (map)
--- import qualified Data.ByteString.Char8 as C hiding (map)
 import qualified Data.ByteString.Lazy.Char8 as L hiding (map)
 import Control.Monad.Trans
 import Data.Maybe
---TODO: There are at least a few cases where it'd be faster if I converted
--- to Text earlier in the chain, and manually called the prelude ones when necessary
 import Data.Text hiding (map, concat, head, last, zip)
--- import Data.Map (toList, Map)
--- import Data.Ratio
--- import System.IO
-
 import Config()
 import WriteJSON
 import DBTalk
@@ -45,12 +37,12 @@ site =
                      ]
         post = route [ ("achievements", postUserAchievements) 
                      , ("users/create", createUser)
+                     , ("users/update", updateUser)
                      ]
 
 -- Should research if HDBC's SQL properly escapes everything if put in as parameters
 safeGetParam :: MonadSnap f => B.ByteString -> f B.ByteString
 safeGetParam paramName = fromMaybe "" <$> getParam paramName
-
 
 listApps :: Snap ()
 listApps = do
@@ -115,11 +107,6 @@ listAllUserAchievements = do
     result <- liftIO $ getUserAchievements (pack "%") userName
     writeText $ pack result
 
--- Must provide a correct game key for this app; not even close to done yet and I'm not sure how I will be implementing this
--- postUserAchievements :: Snap ()
--- postUserAchievements = 
-    -- writeLBS ((L.pack . show) (decodeToAchievement <$> getRequestBody))
-
 postUserAchievements :: Snap ()
 postUserAchievements = do
     request <- getRequestBody
@@ -129,11 +116,10 @@ postUserAchievements = do
     result <- liftIO (maybe ((return 1)) updateUserAchievement (decodeToAchievement request >>= checkAchievement))
     writeLBS ((L.pack.show) result)
 
--- postUserAchievements :: Snap ()
--- postUserAchievements = do
-    -- request <- getRequestBody
-
 createUser :: Snap ()
 createUser = writeLBS "nothing much now"
+
+updateUser :: Snap ()
+updateUser = writeLBS "nothing much now here either"
 
 --EOF--
